@@ -16,8 +16,8 @@ static bool crc32_check(void *data, int len) {
     return true;
 }
 
+// 生成 CRC 校验并发送到物理层
 static void put_frame(uchar_t *frame, int len) {
-    // 生成 CRC 校验
     *(uint32_t *) (frame + len) = crc32(frame, len);
 
     send_frame(frame, len + 4);  // sizeof(uint32_t) = 4
@@ -39,10 +39,10 @@ static void send_data_frame(seq_t frame_nr, seq_t frame_expected, packet_t buffe
     stop_ack_timer();
 }
 
-static void send_ack_frame(seq_t ack) {
+static void send_ack_frame(seq_t ack_nr) {
     struct frame f = {
             .kind = FRAME_ACK,
-            .ack = ack,
+            .ack = ack_nr,
     };
 
     dbg_frame("Sending ACK frame <ack=%d>\n", f.ack);
@@ -54,12 +54,17 @@ int main(int argc, char **argv) {
     int arg;  // *_TIMEOUT 事件中产生超时事件的定时器编号
     int event;
     int len;  // 接收到的数据帧长度
+
+    // 发送窗口
     seq_t next_frame_to_send = 0;
     seq_t ack_expected = 0;
+
+    // 接收窗口
     seq_t frame_expected = 0;
+
     struct frame f;  // 接收到的帧
     packet_t buffer[MAX_SEQ + 1];  // 出境 buffer
-    seq_t buffer_len = 0;  // 当前 buffer 中的帧数
+    seq_t buffer_len = 0;  // 当前 buffer 中的 packet 数
 
     protocol_init(argc, argv);
     lprintf("Go back N protocol by Yin Rui, build %s %s\n", __DATE__, __TIME__);
@@ -106,7 +111,7 @@ int main(int argc, char **argv) {
                 if (f.kind == FRAME_DATA) {
                     if (f.seq == frame_expected) {
                         put_packet(f.data, sizeof(f.data));
-                        start_ack_timer(ACK_DELAY_TIMEOUT_MS);
+                        start_ack_timer(ACK_TIMEOUT_MS);
                         inc(frame_expected);
                     }
                 }
