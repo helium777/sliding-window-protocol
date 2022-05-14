@@ -4,8 +4,13 @@
 
 static bool phl_ready = false;
 
-
-// 返回 a <= b < c (循环)
+/**
+ * @brief 返回 a \<= b \< c (循环)
+ * @param a
+ * @param b
+ * @param c
+ * @return true / false
+ */
 static bool between(seq_t a, seq_t b, seq_t c) {
     return ((a <= b) && (b < c)) || ((c < a) && (a <= b)) || ((b < c) && (c < a));
 }
@@ -71,6 +76,21 @@ static void send_ack_frame(seq_t ack_nr) {
     put_frame(&f, 2);  // 2 = 1 + 1
 }
 
+/**
+ * @brief 发送 nak 帧
+ * @param nak_nr 期望的帧序号
+ */
+static void send_nak_frame(seq_t nak_nr) {
+    struct frame f = {
+            .kind = FRAME_NAK,
+            .ack = nak_nr,
+    };
+
+    dbg_frame("Sending NAK frame <ack=%d>\n", f.ack);
+
+    put_frame(&f, 2);  // 2 = 1 + 1
+}
+
 int main(int argc, char **argv) {
     int arg;  // *_TIMEOUT 事件中产生超时事件的定时器编号
     int event;
@@ -82,6 +102,7 @@ int main(int argc, char **argv) {
 
     // 接收窗口
     seq_t frame_expected = 0;
+    bool no_nak = true;  // 是否发送过 nak 帧
 
     struct frame f;  // 接收到的帧
     packet_t buffer[MAX_SEQ + 1];  // 出境 buffer
@@ -119,6 +140,8 @@ int main(int argc, char **argv) {
                 len = recv_frame((uchar_t *) &f, sizeof(f));
                 if (f.kind == FRAME_ACK) {
                     dbg_frame("Received ACK frame <ack=%d>\n", f.ack);
+                } else if (f.kind == FRAME_NAK) {
+                    dbg_frame("Received NAK frame <ack=%d>\n", f.ack);
                 } else if (f.kind == FRAME_DATA) {
                     dbg_frame("Received DATA frame <ack=%d, seq=%d, id=%d>\n", f.ack, f.seq,
                               *(short *) f.data);
@@ -126,7 +149,13 @@ int main(int argc, char **argv) {
 
                 if (!crc32_check(&f, len)) {
                     dbg_event("*** Bad CRC Checksum ***\n");
-                    break;  // 忽略错误帧
+
+                    if (f.kind == FRAME_DATA && no_nak) {
+                        send_nak_frame(frame_expected);
+                        no_nak = false;
+                    }
+
+                    break;
                 }
 
                 if (f.kind == FRAME_DATA) {
@@ -134,14 +163,26 @@ int main(int argc, char **argv) {
                         put_packet(f.data, sizeof(f.data));
                         start_ack_timer(ACK_TIMEOUT_MS);
                         inc(frame_expected);
+                        no_nak = true;
+                    } else if (no_nak) {
+                        send_nak_frame(frame_expected);
+                        no_nak = false;
                     }
                 }
 
-                // 累积确认
-                while (between(ack_expected, f.ack, next_frame_to_send)) {
-                    stop_timer(ack_expected);
-                    buffer_len--;
-                    inc(ack_expected);
+                if (f.kind != FRAME_NAK) {
+                    // 累积确认
+                    while (between(ack_expected, f.ack, next_frame_to_send)) {
+                        stop_timer(ack_expected);
+                        buffer_len--;
+                        inc(ack_expected);
+                    }
+                } else {
+                    next_frame_to_send = ack_expected;
+                    for (seq_t i = 0; i < buffer_len; i++) {
+                        send_data_frame(next_frame_to_send, frame_expected, buffer);
+                        inc(next_frame_to_send);
+                    }
                 }
 
                 break;
@@ -162,7 +203,8 @@ int main(int argc, char **argv) {
                 break;
 
             default:
-                break;
+                dbg_warning("Unknown event %d\nAbort.\n", event);
+                return 1;
         }
 
         if (buffer_len < MAX_SEQ && phl_ready) {
