@@ -686,7 +686,7 @@ void dbg_event(char *fmt, ...)
 {
 	va_list arg_ptr;
 
-	if (debug_mask & DBG_FRAME) {
+	if (debug_mask & DBG_EVENT) {
 		va_start(arg_ptr, fmt);
 		__v_lprintf(fmt, arg_ptr);
 		va_end(arg_ptr);
