@@ -4,11 +4,18 @@
 
 static bool phl_ready = false;
 
+
 // 返回 a <= b < c (循环)
 static bool between(seq_t a, seq_t b, seq_t c) {
     return ((a <= b) && (b < c)) || ((c < a) && (a <= b)) || ((b < c) && (c < a));
 }
 
+/**
+ * @brief 使用 crc32 校验数据完整性
+ * @param data 数据指针
+ * @param len 数据长度
+ * @return 数据完整返回 true, 否则返回 false
+ */
 static bool crc32_check(void *data, int len) {
     if (crc32((uchar_t *) data, len) != 0) {
         return false;
@@ -16,14 +23,24 @@ static bool crc32_check(void *data, int len) {
     return true;
 }
 
-// 生成 CRC 校验并发送到物理层
-static void put_frame(uchar_t *frame, int len) {
+/**
+ * @brief 生成 CRC 校验并发送到物理层
+ * @param frame 没有 CRC 校验的帧
+ * @param len 帧长度
+ */
+static void put_frame(void *frame, int len) {
     *(uint32_t *) (frame + len) = crc32(frame, len);
 
     send_frame(frame, len + 4);  // sizeof(uint32_t) = 4
     phl_ready = false;
 }
 
+/**
+ * @brief 发送数据帧
+ * @param frame_nr 帧在 buffer 中的序号
+ * @param frame_expected 期望接受的帧序号, 用于生成 piggyback ack
+ * @param buffer 帧缓冲区
+ */
 static void send_data_frame(seq_t frame_nr, seq_t frame_expected, packet_t buffer[]) {
     struct frame f = {
             .kind = FRAME_DATA,
@@ -34,11 +51,15 @@ static void send_data_frame(seq_t frame_nr, seq_t frame_expected, packet_t buffe
 
     dbg_frame("Sending DATA frame <ack=%d, seq=%d, id=%d>\n", f.ack, f.seq, *(short *) f.data);
 
-    put_frame((uint8_t *) &f, 3 + sizeof(f.data));
+    put_frame(&f, 259);  // 259 = 1 + 1 + 1 + 256
     start_timer(frame_nr, DATA_TIMEOUT_MS);
     stop_ack_timer();
 }
 
+/**
+ * @brief 发送 ack 帧
+ * @param ack_nr 确认收到的帧序号
+ */
 static void send_ack_frame(seq_t ack_nr) {
     struct frame f = {
             .kind = FRAME_ACK,
@@ -47,7 +68,7 @@ static void send_ack_frame(seq_t ack_nr) {
 
     dbg_frame("Sending ACK frame <ack=%d>\n", f.ack);
 
-    put_frame((uint8_t *) &f, 2);  // 2 = sizeof(f.kind) + sizeof(f.ack)
+    put_frame(&f, 2);  // 2 = 1 + 1
 }
 
 int main(int argc, char **argv) {
