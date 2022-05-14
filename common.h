@@ -16,7 +16,7 @@
 #define DATA_TIMEOUT_MS 2000
 
 // piggyback ack 延迟超时时间
-#define ACK_DELAY_TIMEOUT_MS 500
+#define ACK_TIMEOUT_MS 500
 
 typedef uint8_t packet_t[PKT_LEN];
 
@@ -24,6 +24,17 @@ typedef uint8_t seq_t;
 
 typedef uint8_t uchar_t;
 
+/*
+    data frame
+    +---------+--------+--------+-----------+----------+
+    | kind(1) | ack(1) | seq(1) | data(256) | crc32(4) |
+    +---------+--------+--------+-----------+----------+
+
+    ack/nak frame
+    +---------+-------+----------+
+    | kind(1) | ack(1)| crc32(4) |
+    +---------+-------+----------+
+*/
 struct frame {
     uchar_t kind;
     seq_t ack;
