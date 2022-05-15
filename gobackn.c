@@ -63,12 +63,12 @@ static void send_data_frame(seq_t frame_nr, seq_t frame_expected, packet_t buffe
 
 /**
  * @brief 发送 ack 帧
- * @param ack_nr 确认收到的帧序号
+ * @param frame_expected 期望接受的帧序号, 用于生成 ack 序号
  */
-static void send_ack_frame(seq_t ack_nr) {
+static void send_ack_frame(seq_t frame_expected) {
     struct frame f = {
             .kind = FRAME_ACK,
-            .ack = ack_nr,
+            .ack = (frame_expected + MAX_SEQ) % (MAX_SEQ + 1),
     };
 
     dbg_frame("Sending ACK frame <ack=%d>\n", f.ack);
@@ -78,12 +78,12 @@ static void send_ack_frame(seq_t ack_nr) {
 
 /**
  * @brief 发送 nak 帧
- * @param nak_nr 期望的帧序号
+ * @param frame_expected 期望接受的帧序号, 用于生成 ack 序号
  */
-static void send_nak_frame(seq_t nak_nr) {
+static void send_nak_frame(seq_t frame_expected) {
     struct frame f = {
             .kind = FRAME_NAK,
-            .ack = nak_nr,
+            .ack = (frame_expected + MAX_SEQ) % (MAX_SEQ + 1),
     };
 
     dbg_frame("Sending NAK frame <ack=%d>\n", f.ack);
@@ -198,7 +198,7 @@ int main(int argc, char **argv) {
                 break;
 
             case ACK_TIMEOUT:
-                send_ack_frame((frame_expected + MAX_SEQ) % (MAX_SEQ + 1));
+                send_ack_frame(frame_expected);
                 stop_ack_timer();
                 break;
 
