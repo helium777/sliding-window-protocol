@@ -4,6 +4,69 @@
 
 ### 软件设计
 
+Go-Back-N 协议由 `gobackn.c` 和 `common.h` 组成. 其中数据结构以及变量作用均有详细的注释. 例如帧的结构:
+
+```text
+data frame
++---------+--------+--------+-----------+----------+
+| kind(1) | ack(1) | seq(1) | data(256) | crc32(4) |
++---------+--------+--------+-----------+----------+
+
+ack/nak frame
++---------+--------+----------+
+| kind(1) | ack(1) | crc32(4) |
++---------+--------+----------+
+```
+
+以及核心的协议参数:
+
+```c
+// 最大 seq 值, seq = 0, 1, ..., MAX_SEQ
+#define MAX_SEQ 7
+
+// 数据帧超时时间
+#define DATA_TIMEOUT_MS 2000
+
+// piggyback ack 延迟超时时间
+#define ACK_TIMEOUT_MS 500
+```
+
+其他的数据结构和函数信息可以参考源码.
+
+主程序在接收到事件之后, 主要流程如下:
+
+<img src="images/main-flow.drawio.svg" alt="主要流程"/>
+
+以及计时器超时后的处理:
+
+```c
+case DATA_TIMEOUT:
+    dbg_event("DATA frame <seq=%d> timeout\n", arg);
+
+    next_frame_to_send = ack_expected;
+    for (seq_t i = 0; i < buffer_len; i++) {
+        send_data_frame(next_frame_to_send, frame_expected, buffer);
+        inc(next_frame_to_send);
+    }
+    break;
+
+case ACK_TIMEOUT:
+    send_ack_frame(frame_expected);
+    stop_ack_timer();
+    break;
+```
+
+除了收发帧, 该协议还考虑到了层间的流量控制:
+
+1. 与物理层之间的流量控制
+    - 每次调用 `send_frame()` 后将全局变量 `phl_ready` 置 `false`
+    - 物理层发送队列低于 50 字节水平时，会产生 `PHYSICAL_LAYER_READY` 事件, 此时将 `phl_ready` 置 `true`
+    - 若 `phl_ready` 为 `false`, 禁用网络层, 不再接收 packet
+
+2. 与网络层之间的流量控制
+   - 只要 `phl_ready` 为 `true` 且 packet buffer 未满, 则允许网络层发送 packet
+   - 网络层若有 packet 需要发送, 则会产生 `NETWORK_LAYER_READY` 事件, 此时将 packet 存入 buffer 并发送 (详细过程见「主要流程」)
+
 ### 结果分析
 
 ## Selective Repeat 协议
