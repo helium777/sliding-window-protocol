@@ -52,7 +52,7 @@ ack/nak frame
 
 ```c
 case DATA_TIMEOUT:
-    dbg_event("DATA frame <seq=%d> timeout\n", arg);
+ dbg_event("DATA frame <seq=%d> timeout\n", arg);
 
     next_frame_to_send = ack_expected;
     for (seq_t i = 0; i < buffer_len; i++) {
@@ -515,8 +515,67 @@ $$utilization = 97\%\times\frac{4.75}{5.75}=80.13\%$$
       }
     
     ```
+- 在 x86系列计算机上为某一帧计算 32位 CRC32校验和，比较一下 为相同帧计算 16位 CRC16校
+验和，所花费的 CPU时间会多一倍吗？本次实验课提供的 crc32函数只有两个参数，分别为缓冲区首地
+址和缓冲区长度，这似乎足够了，可是， RFC1662给出的源代码样例中的函数 pppfcs32(fcs, cp, len)需要三个参数，为什么要这样设计？
+
+  - 根据前面的讨论, 计算32位crc校验和和计算16位校验和都是每次取信息中8位与CRC寄存器内容异或, 将根据预制表格查表得到的结果和CRC寄存器右移8位的结果模二加(相当于异或), 循环往复直到信息尾。不同的地方只是32位crc校验和计算的时候寄存器容量为32bit, 每次查表取出的数据长度为32bit, 而16为crc都是16bit。但是这些操作耗时均耗相同的多项式时间, 不会存在所花CPU时间多一倍的情况。
+
+  - RFC1662样例函数中参数中有fcs, 相当于在函数中先将之前的校验和字段crc预先放入crc寄存器, 与新的数据继续进行crc校`。当参数`fcs = 0xffffffff`时, 与实验课提供的crc32一致。
+
 
 ### 日志功能
+
+实验中给出的日志函数有三级, 分别是 `dbg_frame(char *fmt, ...)`, `dbg_event(char *fmt, ...)`和`dbg_warning(char *fmt, ...)`, 除了输出时依据不同的`debug_mask`位之外, 三个函数的行为完全一致。以`dbg_frame()`函数为例, 对其进行功能讲解。
+
+```c
+void dbg_frame(char *fmt, ...)
+{
+	va_list arg_ptr;
+
+	if (debug_mask & DBG_FRAME) {
+		va_start(arg_ptr, fmt);
+		__v_lprintf(fmt, arg_ptr);
+		va_end(arg_ptr);
+	}
+}
+```
+
+与`lprintf()`比较, 可以看到除返回值类型之外, 也是一致的。在`__v_lprintf(fmt, arg_ptr)`中, 在`while(*format)`循环中通过检测字符串中%的位置的方式来实现普通字符的输出和变量的输出。对于非形式变量内容, 函数会直接将其通过`output`函数输出到`stdout`和`log_file`; 对于变量的输出, 通过`switch(ch = *format++)`的方式依次读取各位修饰参数并实现其功能, 再通过`goto next_option``跳转语句不断读取下一个修饰参数, 直到修饰参数被读完, 通过`goto print_num`和`output_string()`等函数实现各类型变量的输出。而这些输出方式最终又会调用`output()`函数完成最终的输出对`stdout`和日志文件`log_file`。下面对output函数的主要行为进行介绍。
+
+```c
+static size_t output(const char *str, size_t len)
+{
+	static bool sol = true; /* start of line */
+	unsigned int ms, n;
+	char timestamp[32];
+	const char *head, *tail, *end = str + len;
+
+	for (head = tail = str; tail < end; head = tail) {
+		while (tail < end && *tail++ != '\n');
+		if (sol) {
+			ms = get_ms();
+			n = sprintf(timestamp, "%03d.%03d ", ms / 1000, ms % 1000);
+			tee_output(timestamp, n);
+		}
+		tee_output(head, tail - head);
+		sol = tail[-1] == '\n';
+	}
+	return len;
+}
+```
+
+`output()`函数中的`tee_output`是一个如下的宏, 利用`do {} while(0)`语句实现只执行一次的调用`fwrite()`写入日志文件和标准输出行为。
+
+```c
+#define tee_output(buf, len) do { \
+    fwrite(buf, 1, len, stdout); \
+	if (log_file)                    \
+        fwrite(buf, 1, len, log_file); \
+} while (0)
+```
+
+通过`while (tail < end && *tail++ != '\n');`让`tail`指向`\n`或字符串尾来实现逐行输出。有标志位sol判断待输出的字符判断是否位于字符串头部。如果是, 构造时间戳`timestamp`并记录其长度`n`, 使用`tee_output()`函数进行日志输出。然后将`head`移到指向`\n`的`tail`, 继续输出下一行字符串, 直到字符串输出完毕。
 
 ### 可变参数函数
 
@@ -529,7 +588,7 @@ size_t lprintf(const char *format, ...)
     va_list arg_ptr;
 
     va_start(arg_ptr, format);
-	n = __v_lprintf(format, arg_ptr);
+    n = __v_lprintf(format, arg_ptr);
     va_end(arg_ptr);
 
     return n;
@@ -579,5 +638,19 @@ void start_ack_timer(unsigned int ms)
 
 ### 协议改进
 
-[1]: https://ieeexplore.ieee.org/document/35380 "T. Fujiwara, T. Kasami and S. Lin, "Error detecting capabilities of the shortened Hamming codes adopted for error detection in IEEE Standard 802.3," in IEEE Transactions on Communications, vol. 37, no. 9, pp. 986-989, Sept. 1989, doi: 10.1109/26.35380."
+- 如果现实中有两个相距5000公里的站点要利用你所设计的协议通过卫星信道进行通信, 还有哪些问题需要解决？实验协议离实用还有哪些差距？你觉得还需要增加哪方面的功能？
+
+  - 对于数据率高且环回时延大的卫星信道来说, go-back-N协议的效能随着误码率的提高会迅速降低。通过计算可以发现, 对数据率大于 1.544 Mbps 的卫星信道来说, 当误码率高于 $1\mathrm{e}{-5}$ 的时候, 处理能力已经变得不可用了。
+
+  - 这是因为 go-back-N 协议在遇到出错的数据块的时候, 需要重传后面接连的许多数据块。而选择重传协议的优势就在此得以体现。在理想情况下, 选择重传协议只需要重传出错的数据块而不需要重传已经正确传输的数据块。这样, 协议的通信能力就不会受到高环回时延的影响。
+
+  - 此外, 如果buffer太小的话, 由于接收方需要将接受到的数据块按照正确的顺序发送给上层, 就容易出现buffer溢出的现象, 丢失正确接受的没有误码的帧。所以理论上来说, 越大的buffer就会有越好的性能。如果buffer的大小是无穷的, 则永远不会有溢出现象发生, 可以达到只重传出错数据块的理想效果。在实际应用中, 应该根据误码率确定充分大的buffer大小, 保证比较好的选择重传效果。
+  
+- 从因特网或其他资料查阅LAPB相关的协议介绍和对该协议的评论，用成熟的CCITT链路层协议标准对比你所实现的实验性协
+议，实验性协议的设计还遗漏了哪些重要问题？
+
+  - CCITT(X.25)协议的数据链路层(link level/frame level, 也叫帧层)为packet level建立的呼叫(虚拟链路)进行数据传输。该层使用链接访问程序来确保信息和控制信息被准确的在物理层链路上叫醒交换。它提供基于HDLC的一个子集的叫做回复程序, 这个恢复程序就是LAP-B, 是同步且全双工的。X.25协议一共有三种帧, 分别为信息帧, 监督帧和未编号的帧。
+  - 与CCITT协议的帧层相比较, 实验性协议的设计不能设置异步平衡模式(SABM), 不能要求终止帧I的重传。
+
+[1]: <https://ieeexplore.ieee.org/document/35380> "T. Fujiwara, T. Kasami and S. Lin, "Error detecting capabilities of the shortened Hamming codes adopted for error detection in IEEE Standard 802.3," in IEEE Transactions on Communications, vol. 37, no. 9, pp. 986-989, Sept. 1989, doi: 10.1109/26.35380."
 [//]: # "$ p(A) \approx 8.00633426223384958575479686260223388671875\mathrm{e}{-9} $"
