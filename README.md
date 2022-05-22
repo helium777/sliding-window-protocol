@@ -357,6 +357,27 @@ case ACK_TIMEOUT:
 
 ### 定时器函数
 
+实验框架中给出了两个定时器函数:
+
+```c
+void start_timer(unsigned int nr, unsigned int ms)
+{
+    if (nr >= ACK_TIMER_ID) 
+        ABORT("start_timer(): timer No. must be 0~128");
+    timer[nr] = now + phl_sq_len() * 8000 / CHAN_BPS + ms;
+}
+
+void start_ack_timer(unsigned int ms)
+{
+    if (timer[ACK_TIMER_ID] == 0)
+        timer[ACK_TIMER_ID] = now + ms;
+}
+```
+
+其中 `start_timer()` 是数据帧超时定时器, 最多有 129 个定时器, 在设置定时器的时候, 考虑到了物理层的缓冲区延迟 `phl_sq_len() * 8000 / CHAN_BPS`, 重复调用时会更新超时时间 (因为重复调用意味着重发, 重发之后旧的定时器就无用了, 所以直接覆盖). 
+
+而 `start_ack_timer()` 是 piggyback ack 帧超时定时器, 只有一个定时器 (也就是 `timer[ACK_TIMER_ID]`), 重复调用时会保留最早的超时时间, 也就是说只有当 ack_timer 未启用时, 调用 `start_ack_timer()` 才会更新定时器. 这样做的理由是我们的协议均有累计确认功能, 只要最早超时的 ack 帧被数据帧搭载了, 那么此时所有等待发送 ack 的数据帧都相当于已经发送 ack 了; 同时, 若最早超时的 ack 帧超时了, 我们发送了一个单独的 ack 帧, 此时所有等待发送 ack 的数据帧也都相当于已经发送 ack 了. 所以我们只需要保留最早超时的 ack 帧即可.
+
 ### 软件测试
 
 本次实验给出了五种测试方案, 目的是确保协议在各种情况下都能正确工作, 且有较好的性能表现.
