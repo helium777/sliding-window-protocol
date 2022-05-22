@@ -355,6 +355,24 @@ case ACK_TIMEOUT:
 
 ### 可变参数函数
 
+实验框架中给出了一个可变参数函数 `lprintf()` 的实现:
+
+```c
+size_t lprintf(const char *format, ...)
+{
+    size_t n;
+    va_list arg_ptr;
+
+    va_start(arg_ptr, format);
+	n = __v_lprintf(format, arg_ptr);
+    va_end(arg_ptr);
+
+    return n;
+}
+```
+
+实际上, `va_list` 就是指向可变参数的内存区域的指针, 通过 `va_start()` 初始化, 这个函数的第二个参数是最后一个非可变参数, 即 `...` 之前的最后一个参数, 用它来算出 `va_list` 的起始地址. 初始化之后, 可以使用 `va_arg()` 获取可变参数列表中下一个参数, 注意这个函数需要提供下一个参数的类型, 因为 `va_list` 只是指向可变参数的内存区域的指针, 没有任何类型信息. 在这个例子中, 可变参数列表的类型由 `format` 参数给出 (即 `%d`, `%s` 等). 最后通过 `va_end()` 清理 `va_start()` 初始化的可变参数列表, 不调用 `va_end()` 直接 `return` 的行为是 implementation-defined. 这是因为某些情况下, `va_start()` 会改变栈的结构, 必须要 `va_end()` 进行还原.
+
 ### 定时器函数
 
 实验框架中给出了两个定时器函数:
