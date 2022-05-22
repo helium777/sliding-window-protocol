@@ -361,6 +361,8 @@ case ACK_TIMEOUT:
 
 ### 流量控制
 
+我们的滑动窗口协议考虑到了两个站点的数据链路层对等实体之间的流量控制问题. 我们通过选择发送窗口和接收窗口的大小以及确认机制来实现这一点. 因为窗口大小有限制, 发送方不会一次性发送过多使接收方被数据所淹没. 另外, 如果接受方无法处理发送过快的帧, 则发送方不会接受到 ACK, 这样也控制了发送流量.
+
 ### 协议改进
 
 [1]: https://ieeexplore.ieee.org/document/35380 (T. Fujiwara, T. Kasami and S. Lin, "Error detecting capabilities of the shortened Hamming codes adopted for error detection in IEEE Standard 802.3," in IEEE Transactions on Communications, vol. 37, no. 9, pp. 986-989, Sept. 1989, doi: 10.1109/26.35380.)
