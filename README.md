@@ -284,7 +284,13 @@ utilization = 97\%\times\frac{4.75}{5.75}=80.13\%
 $$
 实际测试得各种情况结果记录如表
 
-(见性能测试记录表)
+| 命令                  | 说明                                                         | 站点 A 利用率 | 站点 B 利用率 | 运行时间（s） |
+| --------------------- | ------------------------------------------------------------ | ------------- | ------------- | ------------- |
+| `--utopia`            | 无误码信道, 站点 A 平缓发出数据, 站点 B 以「发送 100 秒，慢发 100 秒」周期性交替 | 56.35%        | 96.97%        | 904.41        |
+| 无                    | 站点A分组层平缓方式发出数据，站点B周期性交替“发送100秒，停发100秒” | 52.07%        | 95.20%        | 1154.25       |
+| `--flood --utopia`    | 无误码信道，站点A和站点B的分组层都洪水式产生分组             | 96.97%        | 96.97%        | 995.57        |
+| `--flood`             | 站点A/B的分组层都洪水式产生分组                              | 95.11%        | 94.95%        | 1093.51       |
+| `--flood  -–ber=1e-4` | 洪水式产生 packet, 线路误码率设为 1e-4                       | 60.15%        | 60.49%        | 1194.46       |
 
 可以看到各个情况下的信道利用率与参考值接近。其中有一些情况下效率与理论值有一定差距，如在误码率为1e-4的情况下，线路的利用率只能达到60%左右，猜测原因有如下几点
 
@@ -493,7 +499,7 @@ $$
 
     ```c
       uint32_t crc_table[256];
-
+    
       /* 生成CRC-32的crc_table */
       void GenerateTable() {
         uint32_t polonomial = 0x04C11DB7;
@@ -507,7 +513,7 @@ $$
           crcTable[byte] = crc;
         }
       }
-
+    
     ```
 
 ### 日志功能
@@ -573,5 +579,5 @@ void start_ack_timer(unsigned int ms)
 
 ### 协议改进
 
-[1]: https://ieeexplore.ieee.org/document/35380 (T. Fujiwara, T. Kasami and S. Lin, "Error detecting capabilities of the shortened Hamming codes adopted for error detection in IEEE Standard 802.3," in IEEE Transactions on Communications, vol. 37, no. 9, pp. 986-989, Sept. 1989, doi: 10.1109/26.35380.)
+[1]: https://ieeexplore.ieee.org/document/35380 "T. Fujiwara, T. Kasami and S. Lin, "Error detecting capabilities of the shortened Hamming codes adopted for error detection in IEEE Standard 802.3," in IEEE Transactions on Communications, vol. 37, no. 9, pp. 986-989, Sept. 1989, doi: 10.1109/26.35380."
 [//]: # "$ p(A) \approx 8.00633426223384958575479686260223388671875\mathrm{e}{-9} $"
