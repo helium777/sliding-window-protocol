@@ -9,7 +9,7 @@
 
 - 系统: Linux
 - 构建工具: CMake
-- IDE: CLion
+- IDE/Editor: CLion, VS Code, Neovim
 
 ## Go-Back-N 协议
 
